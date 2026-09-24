@@ -88,6 +88,31 @@ def bar_comparison(table: pd.DataFrame, metric: str, title: str, xlabel: str | N
     return fig
 
 
+def validation_curve_plot(values, train_scores, cv_scores, title: str, xlabel: str,
+                          ylabel: str = "R²", log_x: bool = False, marker_value=None,
+                          marker_label: str = "setting used"):
+    """Mean training score and mean +/- 1 std cross-validation score across a hyperparameter.
+
+    ``train_scores`` and ``cv_scores`` have shape (n_values, n_folds), as returned by
+    sklearn.model_selection.validation_curve.
+    """
+    values = np.asarray(values, dtype=float)
+    tr_m, cv_m, cv_s = train_scores.mean(axis=1), cv_scores.mean(axis=1), cv_scores.std(axis=1)
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    ax.plot(values, tr_m, marker="o", label="training score (mean of folds)")
+    ax.plot(values, cv_m, marker="s", label="cross-validation score (mean)")
+    ax.fill_between(values, cv_m - cv_s, cv_m + cv_s, alpha=0.2, label="CV mean +/- 1 std")
+    if marker_value is not None:
+        ax.axvline(float(marker_value), color="grey", linestyle=":", label=marker_label)
+    if log_x:
+        ax.set_xscale("log")
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.legend(fontsize=8)
+    return fig
+
+
 def predicted_vs_actual(y_true, y_pred, title: str, units: str = ""):
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.scatter(y_true, y_pred, s=10, alpha=0.4, label="test rows")
