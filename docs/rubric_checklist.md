@@ -9,7 +9,7 @@ Status values:
 
 `python scripts/validate_project.py` checks the mechanical items automatically.
 
-*Last updated: Phase 3 (regression audit, EDA, split, preprocessing). In the table below, "regression: done"
+*Last updated: Phase 5 (regression track complete apart from team-written content; full evidence in `docs/regression_audit.md`). In the table below, "regression: done"
 means the regression half is built and executed; the classification half follows in Phase 6.*
 
 | # | Criterion (marks) | Full-marks descriptor (abridged) | Artefact | Status |
@@ -20,10 +20,10 @@ means the regression half is built and executed; the classification half follows
 | B1 | Data cleaning (1) | Justified missing-value strategy; duplicates and outliers checked and treated | regression §8 (missing), §9 (duplicates), §13 (outliers); classification §4; ✍️ `REG-B1-DUPLICATES`, `REG-B1-OUTLIERS`, `CLF-B1` | Regression: done (checks) + ✍️ Team |
 | B2 | Encoding, scaling & splitting (1) | Suitable encoding; scaler fitted on train only; stratified split | regression §17 (10-bin stratified split) and §18 (pipeline, train-only fit demonstrated); classification §5 and §7 | Regression: done · Classification: Phase 6 |
 | B3 | Feature engineering (1) | ≥ 1 engineered feature with written justification | `src/feature_engineering.py` (ships empty); pipeline hook wired in regression §19; ✍️ `REG-B3`, `CLF-B3` | ✍️ Team |
-| C1 | Regression implementation (4) | All 10 algorithms trained, no errors | `regression.ipynb` §20 (ten algorithm subsections) | Not started (Phase 4) |
-| C2 | Comparative evaluation (2) | One table: R², RMSE, MAE for all 10, ranked by R² | `regression.ipynb` §20; `results/tables/regression_comparison.*` | Not started (Phase 5) |
-| C3 | Hyperparameter tuning (2) | Grid/random search on ≥ 2 models, best parameters and improvement | `regression.ipynb` §20; `results/tuning/` | Not started (Phase 5) |
-| C4 | Visualisation (1) | Residual and predicted-vs-actual plots for the best model; tree feature importance | `regression.ipynb` §20; `results/figures/` | Not started (Phase 5) |
+| C1 | Regression implementation (4) | All 10 algorithms trained, no errors | `regression.ipynb` §20.1–20.10; 10 saved baseline pipelines | Done |
+| C2 | Comparative evaluation (2) | One table: R², RMSE, MAE for all 10, ranked by R² | `regression.ipynb` §20.11 and §21.4; `results/tables/regression_comparison.*` | Done |
+| C3 | Hyperparameter tuning (2) | Grid/random search on ≥ 2 models, best parameters and improvement | `regression.ipynb` §21.2–21.3 (Ridge, Gradient Boosting); `results/tuning/` | Done |
+| C4 | Visualisation (1) | Residual and predicted-vs-actual plots for the best model; tree feature importance | `regression.ipynb` §21.5 (both finalists), §20.6–20.7 (tree importance) | Done |
 | D1 | Part A implementation (2) | All 5 Part A algorithms trained, no errors | `classification.ipynb` §10.1–10.5 | Not started (Phase 7) |
 | D2 | Evaluation (1) | Accuracy, weighted F1, confusion matrix per algorithm; comparison table | `classification.ipynb` §10–11 and §14 (all six G 3.2 metrics) | Not started (Phases 7–8) |
 | E1 | Presentation quality (1) | Clear narrative; every member can explain the code | Notebook structure (what / why / concept per section) | ✍️ Team |
@@ -36,7 +36,7 @@ means the regression half is built and executed; the classification half follows
 | random_state = 42 everywhere | G 7.1 | `src/config.py` `RANDOM_STATE`; test | Done |
 | Scalers and encoders fitted on training data only | G 7.1 | Pipelines; `tests/test_preprocessing.py` (train-only fit, per-fold refit) | Done (mechanism); applied in Phases 3–8 |
 | Consistent 80:20 split per track | G 7.2 | `TEST_SIZE = 0.20`; `split_regression`, `split_classification` | Done (mechanism) |
-| Cross-validation for the top 2 models per track | G 7.2 | regression §20, classification §12 | Not started |
+| Cross-validation for the top 2 models per track | G 7.2 | regression §21.1 (all 10 models), classification §12 | Regression: done · Classification: Phase 8 |
 | Results in summary tables | G 7.2 | `ResultsRecorder.table()`, `save_table()` | Foundation ready |
 | Plot title, labels, legend; tight layout; colourblind palette | G 7.3 | `src/plotting.py` `finalize()` enforces these; test | Done (mechanism) |
 | Notebooks run top to bottom with outputs, no errors | G 7.1, D1 | `scripts/run_all.py`; validation "Notebooks" group | Skeletons execute cleanly |
