@@ -1,0 +1,25 @@
+# Pinned to the versions the project was actually tested with
+# (Python 3.13.2, Windows 11, venv created with `py -3.13 -m venv`).
+# Requires Python >= 3.11 - older interpreters silently resolve to old versions.
+
+# Core ML / data stack
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+joblib==1.6.0
+
+# Plotting
+matplotlib==3.11.2
+seaborn==0.13.2
+
+# pandas.DataFrame.to_markdown() needs tabulate (not a pandas dependency)
+tabulate==0.10.0
+
+# Notebook execution (Jupyter kernel + headless runner used by scripts/run_all.py)
+ipykernel==7.3.0
+nbformat==5.11.1
+nbclient==0.11.0
+
+# Tests
+pytest==9.1.1

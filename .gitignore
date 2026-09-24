@@ -1,0 +1,34 @@
+# ---- Raw data: NOT committed (licensing/provenance - see docs/dataset_sources.md)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+# Original folder the datasets were supplied in
+project datasets/
+
+# ---- Course documents supplied by the instructor / team (kept local)
+*.pdf
+*.docx
+
+# ---- Development-mode outputs (never reported results)
+notebooks/_dev/
+results/**/*_dev.*
+
+# ---- Python / Jupyter
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# ---- Credentials (never commit)
+kaggle.json
+.env
+*.pem
+
+# ---- OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
