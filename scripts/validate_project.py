@@ -212,15 +212,149 @@ def check_models():
         "FAIL" if not_pipe else "PASS", ", ".join(not_pipe) or f"{len(files)} pipelines")
 
 
+REGRESSION_TABLES = [
+    "regression_descriptive_statistics", "regression_outlier_check", "regression_leakage_identifier_check",
+    "regression_split_target_summary", "regression_linear_coefficients", "regression_polynomial_degrees",
+    "regression_comparison", "regression_comparison_details", "regression_cv_all_models",
+    "regression_tuning_summary", "regression_tuning_test_before_after", "regression_tuned_results",
+    "regression_final_comparison",
+]
+# Fixed names, plus glob patterns for the diagnostics (their names depend on the nominated models).
+REGRESSION_FIGURES = [
+    "regression_target_distribution.png", "regression_feature_distributions.png",
+    "regression_outlier_boxplots.png", "regression_correlation_heatmap.png",
+    "regression_scatter_feature_target.png", "regression_boxplots_by_feature.png",
+    "regression_linear_coefficients.png", "regression_random_forest_feature_importance.png",
+    "regression_decision_tree_feature_importance.png", "regression_comparison_r2.png",
+    "regression_cv_vs_test_r2.png", "regression_diag_baseline_vs_tuned.png",
+    "regression_diag_pred_vs_actual_*.png", "regression_diag_residuals_*.png",
+]
+DATA_FUNCTIONS = ("cross_validate", "cross_val_score", "cross_val_predict", "validation_curve",
+                  "learning_curve", "GridSearchCV", "RandomizedSearchCV")
+
+
+def calls_using_test_data(code: str) -> list[str]:
+    """Model-selection calls (CV, curves, searches) whose arguments mention the test set,
+    and any .fit(...) on test data. Returns the offending call texts."""
+    hits = []
+    for fn in DATA_FUNCTIONS:
+        for m in re.finditer(rf"\b{fn}\(", code):
+            depth, j = 1, m.end()
+            while j < len(code) and depth:
+                depth += {"(": 1, ")": -1}.get(code[j], 0)
+                j += 1
+            call = code[m.start():j]
+            if re.search(r"\b[Xy]_test\b", call):
+                hits.append(" ".join(call.split())[:120])
+    hits += [m.group(0) for m in re.finditer(r"\.fit\(\s*[Xy]_test\b", code)]
+    return hits
+
+
+def rebuild_regression_split():
+    """Rebuild the regression split from the raw file, independently of the notebook."""
+    from src.data_loading import load_raw
+    from src.preprocessing import drop_exact_duplicates, split_regression
+    c = config.STUDENT
+    df, _ = drop_exact_duplicates(load_raw(c))
+    X = df[list(c.numeric_features + c.categorical_features)]
+    return split_regression(X, df[c.target])
+
+
+def check_regression_artifacts():
+    import hashlib
+
+    import joblib
+    import numpy as np
+    import pandas as pd
+    from sklearn.base import clone
+    from sklearn.pipeline import Pipeline
+
+    from src.evaluation import regression_metrics
+    from src.regression_models import REGRESSION_ALGORITHMS
+
+    G = "Regression results"
+    missing_t = [t for t in REGRESSION_TABLES
+                 if not ((config.TABLES_DIR / f"{t}.csv").exists() and (config.TABLES_DIR / f"{t}.md").exists())]
+    add(G, f"required tables exist ({len(REGRESSION_TABLES)}, CSV + Markdown)", "FAIL" if missing_t else "PASS",
+        ", ".join(missing_t) or "all present")
+    missing_f = [f for f in REGRESSION_FIGURES if not list(config.FIGURES_DIR.glob(f))]
+    add(G, f"required figures exist ({len(REGRESSION_FIGURES)} names/patterns)", "FAIL" if missing_f else "PASS",
+        ", ".join(missing_f) or f"{len(list(config.FIGURES_DIR.glob('regression_*.png')))} regression figures on disk")
+
+    nb_path = ROOT / "notebooks" / "regression.ipynb"
+    import nbformat
+    code = "\n".join(c.source for c in nbformat.read(nb_path, as_version=4).cells if c.cell_type == "code")
+    bad = calls_using_test_data(code)
+    add(G, "CV, hyperparameter curves and tuning use training data only (static scan)",
+        "FAIL" if bad else "PASS", "; ".join(bad) or "no CV/search/curve call and no .fit() receives X_test / y_test")
+
+    manifest_path = config.MODELS_DIR / "regression_manifest.json"
+    if not manifest_path.exists():
+        add(G, "saved regression pipelines", "PENDING", "models/regression_manifest.json not produced yet")
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    X_train, X_test, y_train, y_test = rebuild_regression_split()
+    fp = hashlib.sha256(",".join(map(str, sorted(X_test.index))).encode()).hexdigest()
+    add(G, "all saved models share the common split (independently rebuilt)",
+        "PASS" if fp == manifest["test_index_sha256"] else "FAIL",
+        f"test rows {len(X_test)}, fingerprint {'matches' if fp == manifest['test_index_sha256'] else 'DIFFERS'}")
+
+    baseline = [m for m in manifest["models"] if m["variant"] == "baseline"]
+    names = sorted(m["model"] for m in baseline)
+    add(G, "exactly the 10 required regressors are saved (baseline)",
+        "PASS" if names == sorted(a.name for a in REGRESSION_ALGORITHMS) else "FAIL", f"{len(baseline)} baseline models")
+
+    reload_diff, refit_diff, not_pipe, leaks, wrong_cls = 0.0, 0.0, [], [], []
+    catalogue = {a.name: a.estimator for a in REGRESSION_ALGORITHMS}
+    for entry in manifest["models"]:
+        pipe = joblib.load(config.MODELS_DIR / entry["file"])
+        if not isinstance(pipe, Pipeline):
+            not_pipe.append(entry["file"])
+            continue
+        est = pipe.named_steps["model"]
+        cls = "PolynomialFeatures+LinearRegression" if isinstance(est, Pipeline) else type(est).__name__
+        if cls != catalogue[entry["model"]]:
+            wrong_cls.append(f"{entry['file']}: {cls}")
+        m = regression_metrics(y_test, pipe.predict(X_test))
+        reload_diff = max(reload_diff, *(abs(m[k] - entry[k]) for k in ("R2", "RMSE", "MAE")))
+        refit = clone(pipe).fit(X_train, y_train)
+        m2 = regression_metrics(y_test, refit.predict(X_test))
+        refit_diff = max(refit_diff, *(abs(m2[k] - entry[k]) for k in ("R2", "RMSE", "MAE")))
+        scaler = pipe.named_steps["preprocess"].named_transformers_["num"].named_steps.get("scale")
+        n_num = len(config.STUDENT.numeric_features)
+        if scaler is not None and not np.allclose(scaler.mean_[:n_num], X_train[list(config.STUDENT.numeric_features)].mean()):
+            leaks.append(entry["file"])
+    add(G, "every saved model is a Pipeline carrying its preprocessing", "FAIL" if not_pipe else "PASS",
+        ", ".join(not_pipe) or f"{len(manifest['models'])} pipelines")
+    add(G, "saved models use the catalogue's estimator classes", "FAIL" if wrong_cls else "PASS",
+        ", ".join(wrong_cls) or "all match")
+    add(G, "saved pipelines reload and reproduce their recorded metrics", "PASS" if reload_diff <= 1e-9 else "FAIL",
+        f"largest difference {reload_diff:.1e}")
+    add(G, "metrics reproduce on an independent refit from scratch", "PASS" if refit_diff <= 1e-9 else "FAIL",
+        f"largest difference {refit_diff:.1e} over {len(manifest['models'])} refits")
+    add(G, "no preprocessing leakage: every scaler holds TRAINING-set means", "FAIL" if leaks else "PASS",
+        ", ".join(leaks) or "all scalers match the training-set means")
+
+    table = pd.read_csv(config.TABLES_DIR / "regression_comparison.csv", index_col=0)
+    tdiff = max(abs(table.loc[e["model"], col] - e[key]) for e in baseline
+                for col, key in (("R²", "R2"), ("RMSE", "RMSE"), ("MAE", "MAE")))
+    tuned = [m for m in manifest["models"] if m["variant"] == "tuned"]
+    ttable = pd.read_csv(config.TABLES_DIR / "regression_tuned_results.csv", index_col=0)
+    tdiff2 = max([abs(ttable.loc[e["model"], col] - e[key]) for e in tuned
+                  for col, key in (("Tuned test R²", "R2"), ("Tuned test RMSE", "RMSE"), ("Tuned test MAE", "MAE"))] or [0.0])
+    add(G, "comparison and tuned tables agree with the saved models", "PASS" if max(tdiff, tdiff2) <= 1e-9 else "FAIL",
+        f"largest difference {max(tdiff, tdiff2):.1e}; {len(tuned)} tuned model(s)")
+    add(G, "formal tuning applied to at least 2 models (rubric C3)", "PASS" if len(tuned) >= 2 else "FAIL",
+        ", ".join(m["model"] for m in tuned))
+
+
 def check_results():
-    # Metric recomputation and the required-figure list are added in Phases 5 and 8,
-    # once the notebooks produce results. Until then they are honestly PENDING.
-    for track in ("regression", "classification"):
-        table = config.TABLES_DIR / f"{track}_comparison.csv"
-        add("Results", f"{track} comparison table", "PASS" if table.exists() else "PENDING",
-            rel(table) if table.exists() else "not produced yet")
-        add("Results", f"{track} metrics reproduce on independent refit", "PENDING",
-            "recomputation check is implemented in Phase 5 (regression) / Phase 8 (classification)")
+    check_regression_artifacts()
+    table = config.TABLES_DIR / "classification_comparison.csv"
+    add("Classification results", "classification comparison table", "PASS" if table.exists() else "PENDING",
+        rel(table) if table.exists() else "not produced yet (Phases 7-8)")
+    add("Classification results", "classification metrics reproduce on independent refit", "PENDING",
+        "implemented in Phase 8")
 
 
 def check_team_sections():
