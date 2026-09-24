@@ -1,0 +1,4 @@
+| Model (tuned)               | Tuned configuration                                             |   Tuned CV R² (train-side) |   Tuned test R² |   Tuned test RMSE |   Tuned test MAE |   Tuned training R² |
+|:----------------------------|:----------------------------------------------------------------|---------------------------:|----------------:|------------------:|-----------------:|--------------------:|
+| Ridge Regression            | alpha=0.5623                                                    |                   0.988676 |        0.988579 |          2.052441 |         1.641532 |            0.988705 |
+| Gradient Boosting Regressor | learning_rate=0.1, max_depth=2, n_estimators=400, subsample=0.8 |                   0.988088 |        0.988113 |          2.093957 |         1.677911 |            0.988807 |
