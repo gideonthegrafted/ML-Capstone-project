@@ -94,6 +94,27 @@ def derive_sentiment_label(ratings: pd.Series) -> tuple[pd.Series, pd.DataFrame]
     return labels, report
 
 
+REVIEW_DUPLICATE_KEY = ["Restaurant", "Reviewer", "Review"]
+
+
+def prepare_reviews(raw: pd.DataFrame) -> tuple[pd.DataFrame, list[tuple[str, int]]]:
+    """The classification cleaning sequence of notebooks/classification.ipynb (sections 5-8).
+
+    drop reviews without text -> derive label, drop unlabelled -> drop re-posts (same
+    restaurant, reviewer and text; first kept) -> drop the artefact column. Deterministic:
+    no statistics are learned. Used by validation to rebuild the split independently.
+    """
+    steps = [("raw file", len(raw))]
+    df = raw.dropna(subset=["Review"]).copy()
+    steps.append(("drop reviews without text", len(df)))
+    df["label"], _ = derive_sentiment_label(df["Rating"])
+    df = df.dropna(subset=["label"])
+    steps.append(("keep rows with a positive/negative label", len(df)))
+    df, _ = drop_exact_duplicates(df, subset=REVIEW_DUPLICATE_KEY)
+    steps.append(("drop re-posts (Restaurant + Reviewer + Review)", len(df)))
+    return df.drop(columns=["7514"], errors="ignore"), steps
+
+
 # --------------------------------------------------------------------------
 # Train/test splitting
 # --------------------------------------------------------------------------

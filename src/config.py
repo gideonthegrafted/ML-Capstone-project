@@ -66,9 +66,12 @@ CLASS_LABELS = (LABEL_NEGATIVE, LABEL_POSITIVE)   # fixed display order
 # Binary precision/recall are computed for the minority class, "negative".
 POS_LABEL = LABEL_NEGATIVE
 
-# TF-IDF vocabulary cap. Deliberately NOT fixed yet: Phase 6 measures the real
-# vocabulary size, memory and runtime before choosing it (approved decision 5).
-TFIDF_MAX_FEATURES: int | None = None
+# TF-IDF vocabulary cap (approved decision 5, fixed in Phase 6 after measuring the
+# training data): the full uni+bigram vocabulary (min_df=2) has 37,716 terms, whose dense
+# copy for GaussianNB would need ~1.2 GB; 5,000 terms need ~139 MB (float32, training
+# set) and every Part A classifier fits in seconds. The same cap is used for all five
+# classifiers so they see an identical representation. Evidence: classification.ipynb §12.
+TFIDF_MAX_FEATURES: int | None = 5000
 
 # Upper bound for any sparse-to-dense conversion (GaussianNB needs dense input).
 MAX_DENSE_MB = 400
