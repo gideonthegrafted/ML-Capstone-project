@@ -1,0 +1,2 @@
+Model,majority_class,Accuracy,Precision (negative),Recall (negative),F1 (negative),Precision (weighted),Recall (weighted),F1 (weighted),ROC-AUC
+Majority-class baseline (reference),positive,0.7205290396779759,0.0,0.0,0.0,0.5191620970192662,0.7205290396779759,0.6034912344361656,0.5

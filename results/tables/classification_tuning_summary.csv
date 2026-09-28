@@ -1,0 +1,3 @@
+Model,Baseline configuration,Best parameters,Baseline CV F1w,Tuned CV F1w,CV change,Baseline test F1w,Tuned test F1w,Baseline test recall (neg),Tuned test recall (neg),Baseline test ROC-AUC,Tuned test ROC-AUC
+Support Vector Machine (SVC),"kernel=rbf, C=1.0, class_weight=None","C=1.0, class_weight=balanced, kernel=rbf",0.9520270597547155,0.9539188234978283,0.0018917637431128398,0.9607199657348461,0.9587497462176662,0.9156378600823045,0.9382716049382716,0.9876009511329189,0.9864612994656446
+Logistic Regression,"C=1.0, class_weight=None","C=3.0, class_weight=balanced",0.9411837982764816,0.9525762788116653,0.011392480535183713,0.9511787024688789,0.9533448619114914,0.8806584362139918,0.9526748971193416,0.9894500113308308,0.9897570932642318
