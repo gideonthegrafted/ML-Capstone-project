@@ -57,6 +57,7 @@ REQUIRED_FILES = [
     "src/regression_models.py", "src/classification_models.py",
     "scripts/run_all.py", "scripts/validate_project.py", "scripts/setup_data.py",
     "docs/rubric_checklist.md", "docs/dataset_sources.md", "docs/clarifications.md",
+    "docs/regression_audit.md", "docs/final_review1_audit.md", "docs/viva_guide.md",
 ]
 REQUIRED_DIRS = ["data/raw", "data/processed", "results/tables", "results/figures",
                  "results/tuning", "models", "tests"]
@@ -348,13 +349,145 @@ def check_regression_artifacts():
         ", ".join(m["model"] for m in tuned))
 
 
+CLASSIFICATION_TABLES = [
+    "classification_tfidf_vocabulary_study", "classification_majority_baseline", "classification_logreg_odds_ratios",
+    "classification_comparison", "classification_comparison_details", "classification_cv_all_models",
+    "classification_tuning_summary", "classification_tuned_results",
+]
+CLASSIFICATION_FIGURES = [
+    "classification_rating_to_label.png", "classification_class_balance.png",
+    "classification_review_length_by_class.png", "classification_numeric_distributions.png",
+    "classification_correlation_heatmap.png", "classification_scatter_feature_target.png",
+    "classification_top_terms_by_class.png", "classification_logreg_coefficients.png",
+    "classification_knn_k_curve.png", "classification_decision_tree.png",
+    "classification_decision_tree_importance.png", "classification_decision_tree_depth_curve.png",
+    "classification_svc_kernel_C_grid.png", "classification_confusion_matrices.png",
+    "classification_roc_curves.png", "classification_comparison_weighted_f1.png",
+]
+
+
+def rebuild_classification_split():
+    """Rebuild the classification split from the raw file, independently of the notebook."""
+    from src.data_loading import load_raw
+    from src.preprocessing import prepare_reviews, split_classification
+    df, _ = prepare_reviews(load_raw(config.REVIEWS))
+    return split_classification(df[list(config.REVIEWS.text_features)], df["label"])
+
+
+def check_classification_artifacts():
+    import hashlib
+
+    import joblib
+    import nbformat
+    from sklearn.base import clone
+    from sklearn.pipeline import Pipeline
+
+    from src.classification_models import CLASSIFICATION_PART_A
+    from src.evaluation import classification_metrics, get_scores
+
+    G = "Classification results"
+    miss_t = [t for t in CLASSIFICATION_TABLES
+              if not ((config.TABLES_DIR / f"{t}.csv").exists() and (config.TABLES_DIR / f"{t}.md").exists())]
+    add(G, f"required tables exist ({len(CLASSIFICATION_TABLES)}, CSV + Markdown)", "FAIL" if miss_t else "PASS",
+        ", ".join(miss_t) or "all present")
+    miss_f = [f for f in CLASSIFICATION_FIGURES if not (config.FIGURES_DIR / f).exists()]
+    add(G, f"required figures exist ({len(CLASSIFICATION_FIGURES)})", "FAIL" if miss_f else "PASS",
+        ", ".join(miss_f) or "all present (incl. confusion matrices, ROC curves, tree plot)")
+    code = "\n".join(c.source for c in nbformat.read(ROOT / "notebooks" / "classification.ipynb", as_version=4).cells
+                     if c.cell_type == "code")
+    bad = calls_using_test_data(code)
+    add(G, "CV, curves and tuning use training data only (static scan)", "FAIL" if bad else "PASS",
+        "; ".join(bad) or "no CV/search/curve call and no .fit() receives X_test / y_test")
+
+    path = config.MODELS_DIR / "classification_manifest.json"
+    if not path.exists():
+        add(G, "saved classification pipelines", "PENDING", "models/classification_manifest.json not produced yet")
+        return
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    X_train, X_test, y_train, y_test = rebuild_classification_split()
+    fp = hashlib.sha256(",".join(map(str, sorted(X_test.index))).encode()).hexdigest()
+    add(G, "all saved models share the common stratified split (independently rebuilt)",
+        "PASS" if fp == manifest["test_index_sha256"] else "FAIL",
+        f"train {len(X_train)}, test {len(X_test)}, fingerprint {'matches' if fp == manifest['test_index_sha256'] else 'DIFFERS'}")
+    add(G, "positive class for precision/recall is 'negative'",
+        "PASS" if manifest.get("pos_label") == config.POS_LABEL == "negative" else "FAIL", f"manifest: {manifest.get('pos_label')}")
+
+    catalogue = {a.name: a.estimator for a in CLASSIFICATION_PART_A}
+    base = [m for m in manifest["models"] if m["variant"] == "baseline"]
+    add(G, "exactly the 5 Part A classifiers are saved (baseline)",
+        "PASS" if sorted(m["model"] for m in base) == sorted(catalogue) else "FAIL", f"{len(base)} baseline models")
+    keys = ["Accuracy", "Precision (negative)", "Recall (negative)", "F1 (weighted)", "ROC-AUC"]
+    reload_d, refit_d, wrong, leaks, bad_src = 0.0, 0.0, [], [], []
+    train_vocab = None
+    for e in manifest["models"]:
+        pipe = joblib.load(config.MODELS_DIR / e["file"])
+        if not isinstance(pipe, Pipeline) or type(pipe.named_steps["model"]).__name__ != catalogue[e["model"]]:
+            wrong.append(e["file"])
+            continue
+        s, src = get_scores(pipe, X_test)
+        if src not in ("predict_proba", "decision_function") or src != e["score_source"]:
+            bad_src.append(e["file"])
+        m = classification_metrics(y_test, pipe.predict(X_test), s)
+        reload_d = max(reload_d, *(abs(m[k] - e[k]) for k in keys))
+        refit = clone(pipe).fit(X_train, y_train)
+        s2, _ = get_scores(refit, X_test)
+        m2 = classification_metrics(y_test, refit.predict(X_test), s2)
+        refit_d = max(refit_d, *(abs(m2[k] - e[k]) for k in keys))
+        vocab = set(pipe.named_steps["features"].named_transformers_["tfidf"].vocabulary_)
+        if train_vocab is None:
+            from src.preprocessing import build_tfidf
+            train_vocab = set(build_tfidf(config.TFIDF_MAX_FEATURES).fit(X_train["Review"]).vocabulary_)
+        if vocab != train_vocab:
+            leaks.append(e["file"])
+    add(G, "saved models are Pipelines with the catalogue's estimator classes", "FAIL" if wrong else "PASS",
+        ", ".join(wrong) or f"{len(manifest['models'])} pipelines")
+    add(G, "ROC-AUC uses predict_proba / decision_function (never hard labels)", "FAIL" if bad_src else "PASS",
+        ", ".join(bad_src) or "score source verified for every saved model")
+    add(G, "saved pipelines reload and reproduce their recorded metrics", "PASS" if reload_d <= 1e-9 else "FAIL",
+        f"largest difference {reload_d:.1e}")
+    add(G, "metrics reproduce on an independent refit from scratch", "PASS" if refit_d <= 1e-9 else "FAIL",
+        f"largest difference {refit_d:.1e} over {len(manifest['models'])} refits")
+    add(G, "no TF-IDF leakage: every vocabulary equals one learned from the training rows only",
+        "FAIL" if leaks else "PASS", ", ".join(leaks) or "all vocabularies match the training-only vocabulary")
+
+    import pandas as pd
+    table = pd.read_csv(config.TABLES_DIR / "classification_comparison.csv", index_col=0)
+    cols = {"Accuracy": "Accuracy", "Precision (negative)": "Precision (negative)", "Recall (negative)": "Recall (negative)",
+            "Weighted F1": "F1 (weighted)", "ROC-AUC": "ROC-AUC"}
+    tdiff = max(abs(table.loc[e["model"], c] - e[k]) for e in base for c, k in cols.items())
+    ranked = list(table["Weighted F1"]) == sorted(table["Weighted F1"], reverse=True)
+    add(G, "comparison table agrees with saved models and is ranked by weighted F1",
+        "PASS" if tdiff <= 1e-9 and ranked else "FAIL", f"largest difference {tdiff:.1e}; ranked: {ranked}")
+    tuned = [m for m in manifest["models"] if m["variant"] == "tuned"]
+    add(G, "formal tuning applied to the two CV leaders", "PASS" if len(tuned) >= 2 else "FAIL",
+        ", ".join(m["model"] for m in tuned))
+    add(G, "majority-class baseline reported", "PASS" if (config.TABLES_DIR / "classification_majority_baseline.csv").exists() else "FAIL")
+
+
+def check_notebook_quality():
+    """Explanation alongside code, no stale/debug output, sequential execution."""
+    import nbformat
+    for name in ("regression.ipynb", "classification.ipynb"):
+        nb = nbformat.read(ROOT / "notebooks" / name, as_version=4)
+        prev, code_after_code, long_cells, debug = None, 0, 0, []
+        for c in nb.cells:
+            if c.cell_type == "code":
+                code_after_code += prev == "code"
+                long_cells += len(c.source.splitlines()) > 80
+                if re.search(r"\b(breakpoint\(\)|pdb\.set_trace|print\(\s*['\"]DEBUG)", c.source):
+                    debug.append(c.source.splitlines()[0][:40])
+            prev = c.cell_type
+        stderr = sum(o.get("name") == "stderr" for c in nb.cells if c.cell_type == "code" for o in c.get("outputs", []))
+        ok = code_after_code == 0 and long_cells == 0 and not debug and stderr == 0
+        add("Notebook quality", f"{name}: Markdown before every code cell, no giant/debug cells, no stderr output",
+            "PASS" if ok else "FAIL",
+            f"code-after-code {code_after_code}, cells > 80 lines {long_cells}, debug {len(debug)}, stderr outputs {stderr}")
+
+
 def check_results():
     check_regression_artifacts()
-    table = config.TABLES_DIR / "classification_comparison.csv"
-    add("Classification results", "classification comparison table", "PASS" if table.exists() else "PENDING",
-        rel(table) if table.exists() else "not produced yet (Phases 7-8)")
-    add("Classification results", "classification metrics reproduce on independent refit", "PENDING",
-        "implemented in Phase 8")
+    check_classification_artifacts()
+    check_notebook_quality()
 
 
 def check_team_sections():

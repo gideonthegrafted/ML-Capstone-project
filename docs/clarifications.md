@@ -142,3 +142,41 @@ G 8 allows either the raw files or a script to obtain them. We use the script
 ### C17 — Commits · *Decided*
 The three team members make all commits themselves (at least 7–8 each), under their own names. The
 AI assistant does not commit and does not configure any git identity.
+
+### C18 — TF-IDF vocabulary cap · *Decided (Phase 6)*
+The full training vocabulary (unigrams + bigrams, `min_df=2`) has 37,716 terms. A dense copy for Gaussian
+NB would need about 1.05 GB (float32, training set). `max_features = 5000` keeps 77.9 % of training term
+occurrences and needs about 139 MB. Every classifier uses the same representation. The choice used no
+accuracy figures (`classification.ipynb` §12).
+
+### C19 — Duplicate key for reviews · *Decided (Phase 6; justification: team)*
+All 36 exact duplicate rows in the raw file are empty rows (no reviewer, rating or text); they disappear
+when reviews without text are dropped. Duplicates under *Restaurant + Reviewer + Review* are the same
+person re-posting the same text at a different time (5 after labelling); only the first copy is kept.
+Identical texts from *different* reviewers (e.g. "good") are kept. 7 such texts carry both labels.
+
+### C20 — Random Forest `n_jobs=1` · *Decided (Phase 5)*
+With several threads, a random forest sums its per-tree predictions in a varying order, and the results
+differ at about 1e-14 between calls. Single-threaded prediction is bit-for-bit reproducible, which the
+validation script requires.
+
+### C21 — Nominating models for tuning · *Decided (Phases 5 and 8)*
+The two leaders are nominated by **training-side** 5-fold CV, never by the test table.
+* **Regression:** Linear, Polynomial (degree 1) and Ridge tie at CV R² 0.988676. Linear Regression has no
+  hyperparameters, and Polynomial degree 1 is the same fitted function (identical training
+  predictions). The rule therefore nominates Ridge and Gradient Boosting (`regression.ipynb` §21.2).
+* **Classification:** the top two by mean CV weighted F1 are nominated (`classification.ipynb` §15.1).
+* Search spaces are fixed for every model before nomination.
+
+### C22 — KNN with all-zero TF-IDF vectors · *Reported (Phase 7)*
+47 training reviews contain no vocabulary term, so their TF-IDF vector is all zeros. With the default
+Euclidean distance, an all-zero vector is at distance 1 from every review. That is closer than √2, the
+distance between two reviews that share no terms. As a result, for 84 % of test reviews all 5 nearest
+neighbours are such empty reviews. Cosine distance does not have this property. The default (Euclidean)
+KNN is reported as the baseline required by the protocol; the measurement is in `classification.ipynb`
+§14.2. Interpretation is the team's.
+
+### C23 — Classification EDA before the split · *Decided (Phase 6)*
+As for regression (C9), the classification EDA (§10) is descriptive on the cleaned, labelled data. The
+TF-IDF vocabulary, the only learned preprocessing, is fitted after the split on training rows only. A
+test (`test_tfidf_learns_vocabulary_from_training_rows_only`) and the validation script check this.

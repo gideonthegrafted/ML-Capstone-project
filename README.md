@@ -10,8 +10,10 @@
 > Classification Part B and the clustering track belong to Review 2 and are **deliberately absent**.
 > A scope guard in `scripts/validate_project.py` fails if they appear.
 
-> **Build status:** Phase 2 of 11 — project foundation. The notebooks are skeletons with explained
-> sections; the algorithms are not implemented yet. **No results exist yet**, and none are quoted here.
+> **Build status:** all Review 1 machine-learning work is implemented, executed and validated
+> (`python scripts/validate_project.py`: 0 FAIL). The project is **not yet submission-ready**: the team
+> must still write the ✍️ TEAM ANALYSIS REQUIRED cells and register one engineered feature per track
+> (see *Outstanding team work*).
 
 ## Team
 
@@ -70,6 +72,7 @@ python scripts/run_all.py --track all          # execute both notebooks top to b
 python scripts/run_all.py --track regression --mode dev   # quick pass; outputs get a _dev suffix
 python -m pytest -q                            # test suite
 python scripts/validate_project.py             # rubric, integrity and scope checks
+python scripts/update_readme_results.py        # refresh the README results tables from results/tables
 ```
 You can also open the notebooks and use *Restart Kernel and Run All*.
 
@@ -85,7 +88,8 @@ src/                 shared support code (paths, contracts, loading/audit, prepr
 scripts/             run_all.py, validate_project.py, setup_data.py
 results/             tables/, figures/, tuning/
 models/              saved pipelines (compressed joblib)
-docs/                rubric_checklist.md, dataset_sources.md, clarifications.md
+docs/                rubric_checklist.md, dataset_sources.md, clarifications.md,
+                     regression_audit.md, final_review1_audit.md, viva_guide.md
 tests/               pytest suite (leakage, metric conventions, contracts, scope guard)
 ```
 
@@ -103,8 +107,58 @@ tests/               pytest suite (leakage, metric conventions, contracts, scope
 
 ## Results
 
-*No results yet.* Tables will be filled in from `results/tables/` after the full run (Phases 5 and 8).
-Numbers are never copied from anywhere else.
+*Generated from `results/tables/*.csv` of the full run (`python scripts/run_all.py --track all`); do not
+edit by hand. Test = held-out test set; CV = 5-fold cross-validation on the training set only.*
+
+### Regression — Student Performance (test set: 1,975 rows)
+Baseline (default-hyperparameter) models, ranked by test R²:
+
+| Model                         |     R² |   RMSE |    MAE |   CV R² (mean) |   CV R² (std) |
+|:------------------------------|-------:|-------:|-------:|---------------:|--------------:|
+| Ridge Regression              | 0.9886 | 2.0524 | 1.6415 |         0.9887 |        0.0005 |
+| Linear Regression             | 0.9886 | 2.0525 | 1.6416 |         0.9887 |        0.0005 |
+| Polynomial Regression         | 0.9886 | 2.0525 | 1.6416 |         0.9887 |        0.0005 |
+| Gradient Boosting Regressor   | 0.9880 | 2.1075 | 1.6839 |         0.9877 |        0.0007 |
+| Support Vector Regressor      | 0.9860 | 2.2755 | 1.7953 |         0.9849 |        0.0001 |
+| Random Forest Regressor       | 0.9847 | 2.3737 | 1.9153 |         0.9849 |        0.0007 |
+| Lasso Regression              | 0.9806 | 2.6760 | 2.1457 |         0.9804 |        0.0007 |
+| K-Nearest Neighbors Regressor | 0.9760 | 2.9736 | 2.3687 |         0.9744 |        0.0010 |
+| Decision Tree Regressor       | 0.9748 | 3.0500 | 2.4536 |         0.9746 |        0.0008 |
+| ElasticNet Regression         | 0.8620 | 7.1337 | 5.9257 |         0.8602 |        0.0016 |
+
+Tuned models (GridSearchCV on the two training-CV nominees; see `regression.ipynb` §21):
+
+| Model (tuned)               | Tuned configuration                                             |   Tuned CV R² (train-side) |   Tuned test R² |   Tuned test RMSE |   Tuned test MAE |
+|:----------------------------|:----------------------------------------------------------------|---------------------------:|----------------:|------------------:|-----------------:|
+| Ridge Regression            | alpha=0.5623                                                    |                   0.988676 |        0.988579 |          2.052441 |         1.641532 |
+| Gradient Boosting Regressor | learning_rate=0.1, max_depth=2, n_estimators=400, subsample=0.8 |                   0.988088 |        0.988113 |          2.093957 |         1.677911 |
+
+### Classification Part A — Restaurant Reviews (test set: 1,739 reviews; positive class = `negative`)
+Baseline models, ranked by weighted F1 (ROC-AUC from `predict_proba` / `decision_function`):
+
+| Model                        |   Accuracy |   Precision (negative) |   Recall (negative) |   Weighted F1 |   ROC-AUC |   CV F1w (mean) |   CV F1w (std) |
+|:-----------------------------|-----------:|-----------------------:|--------------------:|--------------:|----------:|----------------:|---------------:|
+| Support Vector Machine (SVC) |     0.9609 |                 0.9428 |              0.9156 |        0.9607 |    0.9876 |          0.9520 |         0.0074 |
+| Logistic Regression          |     0.9517 |                 0.9427 |              0.8807 |        0.9512 |    0.9895 |          0.9412 |         0.0047 |
+| Decision Tree Classifier     |     0.8689 |                 0.7590 |              0.7778 |        0.8694 |    0.8420 |          0.8616 |         0.0076 |
+| Gaussian Naive Bayes         |     0.8355 |                 0.6567 |              0.8621 |        0.8413 |    0.8438 |          0.8193 |         0.0106 |
+| K-Nearest Neighbors          |     0.7320 |                 0.7778 |              0.0576 |        0.6369 |    0.5525 |          0.6418 |         0.0061 |
+
+Majority-class baseline (reference, not a model):
+
+| Model                               |   Accuracy |   Precision (negative) |   Recall (negative) |   Weighted F1 |   ROC-AUC |
+|:------------------------------------|-----------:|-----------------------:|--------------------:|--------------:|----------:|
+| Majority-class baseline (reference) |     0.7205 |                 0.0000 |              0.0000 |        0.6035 |    0.5000 |
+
+Tuned models (GridSearchCV on the two training-CV leaders; see `classification.ipynb` §15):
+
+| Model (tuned)                |   Accuracy |   Precision (negative) |   Recall (negative) |   F1 (weighted) |   ROC-AUC | Score source (ROC-AUC)   |
+|:-----------------------------|-----------:|-----------------------:|--------------------:|----------------:|----------:|:-------------------------|
+| Support Vector Machine (SVC) |     0.9586 |                 0.9157 |              0.9383 |          0.9587 |    0.9865 | decision_function        |
+| Logistic Regression          |     0.9528 |                 0.8870 |              0.9527 |          0.9533 |    0.9898 | predict_proba            |
+
+These tables are results, not conclusions: model selection and interpretation are the team's
+(✍️ cells in the notebooks).
 
 ## AI-assistance disclosure (guideline 7.5)
 
@@ -128,7 +182,7 @@ registration in `src/feature_engineering.py`. All git commits are made by the te
 
 `python scripts/validate_project.py` lists these items. It reports *NOT SUBMISSION-READY* until all
 of them are done:
-* every ✍️ TEAM ANALYSIS REQUIRED cell written;
+* every ✍️ TEAM ANALYSIS REQUIRED cell written (regression 23, classification 19);
 * at least one engineered feature registered with a justification, per track (rubric B3);
 * track ownership filled in above;
 * instructor confirmation of the datasets.
@@ -137,3 +191,5 @@ of them are done:
 
 * The regression data is synthetic, so conclusions describe the generating process, not real students.
 * Sentiment labels are derived from star ratings, which only approximate the sentiment of the text.
+* Known execution noise: on Windows, joblib may print `KeyError` tracebacks from its resource tracker to
+  the console during notebook runs; they do not reach the notebooks or affect any result.
